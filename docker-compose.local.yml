@@ -100,6 +100,7 @@ services:
     volumes:
       - ./backend/app:/app/app:rw
       - emailext_local_media:/app/media
+      - ./wordpress-plugin:/plugin:ro
     networks:
       - emailext_local_net
     depends_on:

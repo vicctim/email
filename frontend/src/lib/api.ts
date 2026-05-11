@@ -102,3 +102,26 @@ export const settingsApi = {
   get: () => api.get("/api/settings").then((r) => r.data),
   update: (data: Record<string, unknown>) => api.put("/api/settings", data).then((r) => r.data),
 };
+
+// ── Plugin ────────────────────────────────
+export const pluginApi = {
+  /**
+   * Triggers a browser download of the WordPress plugin .zip.
+   * Uses a hidden <a> tag so the Authorization header is carried via the
+   * existing cookie interceptor — we fetch with axios and create a blob URL.
+   */
+  download: async () => {
+    const response = await api.get("/api/plugin/download", {
+      responseType: "blob",
+    });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "email-extractor.zip");
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
+};
+

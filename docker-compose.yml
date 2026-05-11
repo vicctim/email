@@ -105,6 +105,7 @@ services:
 
     volumes:
       - emailext_media:/app/media
+      - ./wordpress-plugin:/plugin:ro
     networks:
       - rede_publica
       - emailext_net

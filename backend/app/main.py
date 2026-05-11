@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.rate_limit import RateLimitMiddleware
-from app.api.routes import accounts, auth, dashboard, logs, queue, rules, settings as settings_routes, sites
+from app.api.routes import accounts, auth, dashboard, logs, plugin, queue, rules, settings as settings_routes, sites
 from app.config import get_settings
 from app.database.connection import dispose_engine
 from app.services.imap_listener import ImapListener
@@ -57,6 +57,7 @@ app.include_router(queue.router)
 app.include_router(logs.router)
 app.include_router(dashboard.router)
 app.include_router(settings_routes.router)
+app.include_router(plugin.router)
 
 
 @app.get("/health", tags=["system"])
