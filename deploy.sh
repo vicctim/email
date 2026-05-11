@@ -188,7 +188,7 @@ WHATSAPP_NOTIFY_NUMBER=${WHATSAPP_NOTIFY_NUMBER}
 
 # ─── Domínios / CORS ──────────────────────────────────────────
 NEXT_PUBLIC_API_URL=https://${BACKEND_DOMAIN}
-CORS_ORIGINS=https://${FRONTEND_DOMAIN}
+CORS_ORIGINS=["https://${FRONTEND_DOMAIN}"]
 
 # ─── Comportamento ────────────────────────────────────────────
 DEFAULT_PUBLISH_DELAY=10
