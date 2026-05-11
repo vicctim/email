@@ -1,0 +1,66 @@
+.emailext-gallery {
+  display: grid;
+  grid-template-columns: repeat(var(--columns, 3), 1fr);
+  gap: 8px;
+  margin: 24px 0;
+}
+
+.emailext-gallery-item {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 6px;
+  aspect-ratio: 4/3;
+  background: #f0f0f0;
+}
+
+.emailext-gallery-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.emailext-gallery-item:hover img {
+  transform: scale(1.05);
+}
+
+.emailext-gallery-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0);
+  color: white;
+  transition: background 0.3s ease;
+  pointer-events: none;
+}
+
+.emailext-gallery-item:hover .emailext-gallery-overlay {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.emailext-gallery-overlay svg {
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 0.3s ease;
+}
+
+.emailext-gallery-item:hover .emailext-gallery-overlay svg {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@media (max-width: 600px) {
+  .emailext-gallery {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+}
+
+@media (max-width: 400px) {
+  .emailext-gallery {
+    grid-template-columns: 1fr;
+  }
+}

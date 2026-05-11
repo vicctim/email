@@ -1,0 +1,201 @@
+###############################################
+# Email Content Extractor — Stack LOCAL (dev)
+# Uso: docker compose -f docker-compose.local.yml up -d
+###############################################
+
+services:
+
+  # ─────────────────────────────────────────────
+  # PostgreSQL 15 — Dev
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: emailext_local_postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_LOCAL_PORT:-5433}:5432"
+    environment:
+      POSTGRES_USER: emailext
+      POSTGRES_PASSWORD: emailext_dev_123
+      POSTGRES_DB: emailext
+    volumes:
+      - emailext_local_postgres_data:/var/lib/postgresql/data
+    networks:
+      - emailext_local_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emailext -d emailext"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ─────────────────────────────────────────────
+  # Redis — Dev
+  # ─────────────────────────────────────────────
+  redis:
+    image: redis:alpine
+    container_name: emailext_local_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_LOCAL_PORT:-6380}:6379"
+    command:
+      - redis-server
+      - --appendonly yes
+      - --save 60 1
+      - --loglevel notice
+    volumes:
+      - emailext_local_redis_data:/data
+    networks:
+      - emailext_local_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 15
+      start_period: 10s
+
+  # ─────────────────────────────────────────────
+  # Backend — FastAPI (dev com hot-reload)
+  # ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: emailext_local_backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_LOCAL_PORT:-8000}:8000"
+    environment:
+      # App
+      APP_ENV: development
+      APP_DEBUG: "true"
+      APP_SECRET_KEY: dev-secret-key-change-in-production
+
+      # Database
+      DATABASE_URL: postgresql+asyncpg://emailext:emailext_dev_123@postgres:5432/emailext
+
+      # Redis / Celery
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+
+      # Gmail IMAP
+      IMAP_HOST: imap.gmail.com
+      IMAP_PORT: "993"
+      IMAP_USER: ${GMAIL_USER:-}
+      IMAP_PASSWORD: ${GMAIL_APP_PASSWORD:-}
+
+      # WordPress
+      WP_DEFAULT_STATUS: draft
+
+      # Evolution API (WhatsApp)
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-https://evolutionapi.victorsamuel.com.br}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-emailext-dev}
+      WHATSAPP_NOTIFY_NUMBER: ${WHATSAPP_NOTIFY_NUMBER:-}
+
+      # Delay padrão (1 min em dev para testes rápidos)
+      DEFAULT_PUBLISH_DELAY: "1"
+
+    volumes:
+      - ./backend/app:/app/app:rw
+      - emailext_local_media:/app/media
+    networks:
+      - emailext_local_net
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────
+  # Celery Worker — Dev
+  # ─────────────────────────────────────────────
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: emailext_local_celery_worker
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app worker -l debug -c 2 -Q default,publish,notify
+    environment:
+      APP_ENV: development
+      APP_DEBUG: "true"
+      APP_SECRET_KEY: dev-secret-key-change-in-production
+      DATABASE_URL: postgresql+asyncpg://emailext:emailext_dev_123@postgres:5432/emailext
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      IMAP_HOST: imap.gmail.com
+      IMAP_PORT: "993"
+      IMAP_USER: ${GMAIL_USER:-}
+      IMAP_PASSWORD: ${GMAIL_APP_PASSWORD:-}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-https://evolutionapi.victorsamuel.com.br}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-emailext-dev}
+      WHATSAPP_NOTIFY_NUMBER: ${WHATSAPP_NOTIFY_NUMBER:-}
+      DEFAULT_PUBLISH_DELAY: "1"
+    volumes:
+      - ./backend/app:/app/app:rw
+      - emailext_local_media:/app/media
+    networks:
+      - emailext_local_net
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────
+  # Celery Beat — Dev
+  # ─────────────────────────────────────────────
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: emailext_local_celery_beat
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app beat -l debug --schedule /tmp/celerybeat-schedule
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+asyncpg://emailext:emailext_dev_123@postgres:5432/emailext
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    networks:
+      - emailext_local_net
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────
+  # Frontend — Next.js (dev com hot-reload)
+  # ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: emailext_local_frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_LOCAL_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    volumes:
+      - ./frontend/src:/app/src:rw
+      - ./frontend/public:/app/public:rw
+    networks:
+      - emailext_local_net
+    depends_on:
+      - backend
+
+volumes:
+  emailext_local_postgres_data:
+  emailext_local_redis_data:
+  emailext_local_media:
+
+networks:
+  emailext_local_net:
+    driver: bridge

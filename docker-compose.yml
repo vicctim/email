@@ -1,0 +1,213 @@
+###############################################
+# Email Content Extractor — Stack de Produção
+# Autor: Victor Samuel
+# Data: 2026-05-11
+###############################################
+
+services:
+
+  # ─────────────────────────────────────────────
+  # PostgreSQL 15 — Banco exclusivo do extractor
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: emailext_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-emailext}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${POSTGRES_DB:-emailext}
+    volumes:
+      - emailext_postgres_data:/var/lib/postgresql/data
+    networks:
+      - emailext_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-emailext} -d ${POSTGRES_DB:-emailext}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ─────────────────────────────────────────────
+  # Redis — Broker do Celery + Cache
+  # ─────────────────────────────────────────────
+  redis:
+    image: redis:alpine
+    container_name: emailext_redis
+    restart: always
+    command:
+      - redis-server
+      - --appendonly yes
+      - --save 60 1
+      - --loglevel warning
+      - --maxmemory 256mb
+      - --maxmemory-policy allkeys-lru
+    volumes:
+      - emailext_redis_data:/data
+    networks:
+      - emailext_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 15
+      start_period: 10s
+
+  # ─────────────────────────────────────────────
+  # Backend — FastAPI (API + IMAP Listener)
+  # ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: emailext_backend
+    restart: always
+    environment:
+      # App
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?Defina APP_SECRET_KEY no .env}
+
+      # Database
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-emailext}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-emailext}
+
+      # Redis / Celery
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+
+      # Gmail IMAP
+      IMAP_HOST: imap.gmail.com
+      IMAP_PORT: "993"
+      IMAP_USER: ${GMAIL_USER:?Defina GMAIL_USER no .env}
+      IMAP_PASSWORD: ${GMAIL_APP_PASSWORD:?Defina GMAIL_APP_PASSWORD no .env}
+
+      # WordPress (defaults, sobrescritos via painel)
+      WP_DEFAULT_STATUS: publish
+
+      # Evolution API (WhatsApp)
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-https://evolutionapi.victorsamuel.com.br}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-emailext}
+      WHATSAPP_NOTIFY_NUMBER: ${WHATSAPP_NOTIFY_NUMBER}
+
+      # Delay padrão (minutos)
+      DEFAULT_PUBLISH_DELAY: ${DEFAULT_PUBLISH_DELAY:-10}
+
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+
+      # Admin
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      IMAP_LISTENER_ENABLED: ${IMAP_LISTENER_ENABLED:-true}
+      SETTINGS_STORAGE_PATH: ${SETTINGS_STORAGE_PATH:-media/settings.json}
+
+    volumes:
+      - emailext_media:/app/media
+    networks:
+      - rede_publica
+      - emailext_net
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ─────────────────────────────────────────────
+  # Celery Worker — Processamento assíncrono
+  # ─────────────────────────────────────────────
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: emailext_celery_worker
+    restart: always
+    command: celery -A app.workers.celery_app worker -l info -c 4 -Q default,publish,notify
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_SECRET_KEY: ${APP_SECRET_KEY}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-emailext}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-emailext}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      IMAP_HOST: imap.gmail.com
+      IMAP_PORT: "993"
+      IMAP_USER: ${GMAIL_USER}
+      IMAP_PASSWORD: ${GMAIL_APP_PASSWORD}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-https://evolutionapi.victorsamuel.com.br}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-emailext}
+      WHATSAPP_NOTIFY_NUMBER: ${WHATSAPP_NOTIFY_NUMBER}
+      DEFAULT_PUBLISH_DELAY: ${DEFAULT_PUBLISH_DELAY:-10}
+    volumes:
+      - emailext_media:/app/media
+    networks:
+      - emailext_net
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────
+  # Celery Beat — Agendador de tarefas periódicas
+  # ─────────────────────────────────────────────
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: emailext_celery_beat
+    restart: always
+    command: celery -A app.workers.celery_app beat -l info --schedule /tmp/celerybeat-schedule
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-emailext}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-emailext}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    networks:
+      - emailext_net
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────
+  # Frontend — Painel Admin (Next.js)
+  # ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://emailext-api.victorsamuel.com.br}
+    container_name: emailext_frontend
+    restart: always
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://emailext-api.victorsamuel.com.br}
+    networks:
+      - rede_publica
+      - emailext_net
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  emailext_postgres_data:
+  emailext_redis_data:
+  emailext_media:
+
+networks:
+  rede_publica:
+    external: true
+  emailext_net:
+    driver: bridge
