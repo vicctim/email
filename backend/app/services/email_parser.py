@@ -25,6 +25,15 @@ FOOTER_PATTERNS = (
 
 SUBJECT_PREFIX_RE = re.compile(r"^\s*((re|fw|fwd|enc|tr)\s*:\s*)+", re.IGNORECASE)
 STYLE_SIZE_RE = re.compile(r"(?:width|height)\s*:\s*(\d+)px", re.IGNORECASE)
+TRACKING_URL_PATTERNS = (
+    "/open/",
+    "/track/",
+    "/pixel",
+    "beacon",
+    "addcampaignemailcountopen",
+    "trk.",
+    "click.mlsend",
+)
 SAFE_TAGS = {
     "p",
     "h1",
@@ -86,15 +95,20 @@ class EmailParser:
     ) -> ParsedEmail:
         message = BytesParser(policy=policy.default).parsebytes(raw_email)
         subject = str(message.get("subject", "") or "")
-        html = self.extract_html(message)
-        return self.parse_html(
-            html,
+        kwargs = dict(
             subject=subject,
             remove_signature=remove_signature,
             remove_footer=remove_footer,
             convert_bold_to_h3=convert_bold_to_h3,
             extract_gallery=extract_gallery,
         )
+        parsed = self.parse_html(self.extract_html(message), **kwargs)
+        # Fallback: HTML sem conteúdo textual (ex: email image-only) — tenta text/plain
+        if not parsed.content_html.strip():
+            plain_html = self._plain_text_to_html(message)
+            if plain_html:
+                parsed = self.parse_html(plain_html, **kwargs)
+        return parsed
 
     def parse_html(
         self,
@@ -193,16 +207,30 @@ class EmailParser:
         if html_part:
             payload = html_part.get_content()
             return payload if isinstance(payload, str) else payload.decode(errors="replace")
+        return EmailParser._plain_text_to_html(message)
 
+    @staticmethod
+    def _plain_text_to_html(message: EmailMessage) -> str:
         plain_part = message.get_body(preferencelist=("plain",))
-        if plain_part:
-            text = plain_part.get_content()
-            if not isinstance(text, str):
-                text = text.decode(errors="replace")
-            paragraphs = [f"<p>{line.strip()}</p>" for line in text.splitlines() if line.strip()]
-            return "\n".join(paragraphs)
+        if not plain_part:
+            return ""
+        text = plain_part.get_content()
+        if not isinstance(text, str):
+            text = text.decode(errors="replace")
+        paragraphs = [f"<p>{line.strip()}</p>" for line in text.splitlines() if line.strip()]
+        return "\n".join(paragraphs)
 
-        return ""
+    @staticmethod
+    def _is_tracking_pixel(image: Tag) -> bool:
+        url = (EmailParser._img_src(image) or "").lower()
+        if any(p in url for p in TRACKING_URL_PATTERNS):
+            return True
+        for attr in ("width", "height"):
+            raw = str(image.get(attr, "") or "")
+            match = re.search(r"\d+", raw)
+            if match and int(match.group()) <= 2:
+                return True
+        return False
 
     def _remove_footer_blocks(self, container: Tag) -> None:
         for tag in list(container.find_all(["p", "div", "span", "td", "table", "footer"])):
@@ -297,6 +325,8 @@ class EmailParser:
     def _image_urls(self, container: Tag, base_url: str | None = None) -> list[str]:
         urls: list[str] = []
         for image in container.find_all("img"):
+            if self._is_tracking_pixel(image):
+                continue
             url = self._img_src(image, base_url)
             if url and url not in urls:
                 urls.append(url)
@@ -304,6 +334,8 @@ class EmailParser:
 
     def _featured_image_url(self, container: Tag, image_urls: list[str]) -> str | None:
         for image in container.find_all("img"):
+            if self._is_tracking_pixel(image):
+                continue
             url = self._img_src(image)
             if url and self._is_large_image(image):
                 return url
@@ -318,6 +350,8 @@ class EmailParser:
         stream: list[tuple[str, str | None]] = []
         for node in container.descendants:
             if isinstance(node, Tag) and node.name == "img":
+                if self._is_tracking_pixel(node):
+                    continue
                 stream.append(("img", self._img_src(node, base_url)))
             elif isinstance(node, NavigableString):
                 text = str(node).strip()

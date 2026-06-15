@@ -1,3 +1,6 @@
+import email
+from email import policy as email_policy
+
 from app.services.email_parser import EmailParser
 
 
@@ -108,3 +111,64 @@ def test_normalize_content_removes_duplicate_title_and_bare_emphasis() -> None:
         "<blockquote>Chamamento público é gratuito e segue aberto até 10 de maio para estabelecimentos interessados</blockquote>"
         in content
     )
+
+
+def _make_multipart_email(subject: str, html_body: str, plain_body: str) -> bytes:
+    msg = email.message.MIMEPart(policy=email_policy.default)
+    msg["Subject"] = subject
+    msg["From"] = "test@example.com"
+    msg["To"] = "dest@example.com"
+    msg["MIME-Version"] = "1.0"
+    msg["Content-Type"] = "multipart/alternative"
+
+    html_part = email.message.MIMEPart(policy=email_policy.default)
+    html_part["Content-Type"] = "text/html; charset=utf-8"
+    html_part.set_payload(html_body.encode("utf-8"), charset="utf-8")
+
+    plain_part = email.message.MIMEPart(policy=email_policy.default)
+    plain_part["Content-Type"] = "text/plain; charset=utf-8"
+    plain_part.set_payload(plain_body.encode("utf-8"), charset="utf-8")
+
+    msg.attach(plain_part)
+    msg.attach(html_part)
+    return msg.as_bytes()
+
+
+def test_parser_falls_back_to_plain_text_when_html_has_no_content() -> None:
+    """Email HTML contendo apenas imagens deve usar text/plain como fallback."""
+    html_body = """
+    <html><body>
+      <table><tr><td>
+        <img src="https://cdn.example.com/banner.jpg" width="600" height="300">
+        <img src="https://open.cse360.com.br/Open/AddCampaignEmailCountOpen/abc/def" width="1" height="1">
+      </td></tr></table>
+    </body></html>
+    """
+    plain_body = (
+        "PodQueijo: novo estudio de podcast na ExpoQueijo\n\n"
+        "A ExpoQueijo Brasil 2026 lanca o PodQueijo, estudio de podcast com mais de 20 horas de conteudo ao vivo."
+    )
+    raw = _make_multipart_email("PodQueijo: novo estudio de podcast na ExpoQueijo", html_body, plain_body)
+    parsed = EmailParser().parse_message(raw)
+
+    assert parsed.title == "PodQueijo: novo estudio de podcast na ExpoQueijo"
+    assert parsed.content_html.strip() != ""
+    assert "PodQueijo" in parsed.content_html
+
+
+def test_parser_excludes_tracking_pixels_from_gallery() -> None:
+    """Pixels de rastreamento não devem aparecer em gallery_image_urls."""
+    html = """
+    <html><body>
+      <img src="https://cdn.example.com/destaque.jpg" width="600" height="300">
+      <p>Conteúdo do email com texto suficiente para não ser ignorado.</p>
+      <img src="https://open.cse360.com.br/Open/AddCampaignEmailCountOpen/abc/token" width="1" height="1">
+      <img src="https://track.example.com/pixel/open?id=123">
+    </body></html>
+    """
+    parsed = EmailParser().parse_html(html, subject="Teste tracking pixel")
+
+    assert parsed.featured_image_url == "https://cdn.example.com/destaque.jpg"
+    assert all("cse360" not in url for url in parsed.gallery_image_urls)
+    assert all("/pixel" not in url for url in parsed.gallery_image_urls)
+    assert all("AddCampaignEmailCountOpen" not in url for url in parsed.gallery_image_urls)
