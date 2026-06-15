@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     app_env: Literal["development", "staging", "production"] = "development"
     app_debug: bool = False
+    app_timezone: str = "America/Sao_Paulo"
     app_secret_key: str = Field(default="change-me", min_length=8)
     admin_username: str = "admin"
     admin_password: str = "admin"

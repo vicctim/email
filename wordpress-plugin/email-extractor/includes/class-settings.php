@@ -34,7 +34,7 @@ class EmailExtractor_Settings {
 
     public function render_page() {
         $token = get_option('emailext_auth_token', '');
-        $history = get_option('emailext_received_posts', []);
+        $history = $this->get_received_posts_history();
         $endpoint = rest_url('email-extractor/v1/publish');
         ?>
         <div class="wrap">
@@ -100,5 +100,57 @@ class EmailExtractor_Settings {
             </div>
         </div>
         <?php
+    }
+
+    private function get_received_posts_history() {
+        $history = get_option('emailext_received_posts', []);
+        if (!is_array($history)) {
+            $history = [];
+        }
+
+        $items = [];
+        foreach ($history as $item) {
+            $post_id = absint($item['post_id'] ?? 0);
+            $post = $post_id ? get_post($post_id) : null;
+            if (!$post || $post->post_type !== 'post') {
+                continue;
+            }
+
+            $items[$post_id] = [
+                'post_id'    => $post_id,
+                'title'      => get_the_title($post_id),
+                'created_at' => $item['created_at'] ?? get_the_date('Y-m-d H:i:s', $post_id),
+            ];
+        }
+
+        $query = new WP_Query([
+            'post_type'      => 'post',
+            'post_status'    => ['publish', 'draft', 'pending', 'future', 'private'],
+            'posts_per_page' => 20,
+            'meta_key'       => '_emailext_source',
+            'meta_value'     => 'email-extractor',
+            'orderby'        => 'date',
+            'order'          => 'DESC',
+            'fields'         => 'ids',
+        ]);
+
+        foreach ($query->posts as $post_id) {
+            $post_id = absint($post_id);
+            if (!$post_id || isset($items[$post_id])) {
+                continue;
+            }
+
+            $items[$post_id] = [
+                'post_id'    => $post_id,
+                'title'      => get_the_title($post_id),
+                'created_at' => get_the_date('Y-m-d H:i:s', $post_id),
+            ];
+        }
+
+        usort($items, function ($a, $b) {
+            return strcmp($b['created_at'], $a['created_at']);
+        });
+
+        return array_slice($items, 0, 20);
     }
 }

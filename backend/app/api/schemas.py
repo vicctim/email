@@ -28,6 +28,7 @@ class WordPressSiteBase(BaseModel):
 
 class WordPressSiteCreate(WordPressSiteBase):
     app_password: str
+    plugin_token: str | None = None
 
 
 class WordPressSiteUpdate(BaseModel):
@@ -35,6 +36,7 @@ class WordPressSiteUpdate(BaseModel):
     base_url: str | None = None
     username: str | None = None
     app_password: str | None = None
+    plugin_token: str | None = None
     default_status: Literal["publish", "draft", "pending"] | None = None
     default_category_ids: list[int] | None = None
     default_tag_ids: list[int] | None = None
@@ -46,10 +48,24 @@ class WordPressSiteRead(WordPressSiteBase):
 
     id: int
     auth_type: str
+    has_plugin_token: bool = False
     last_status: str | None = None
     last_checked_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class WordPressCategoryRead(BaseModel):
+    id: int
+    name: str
+    slug: str
+    count: int = 0
+
+
+class WordPressAuthorRead(BaseModel):
+    id: int
+    name: str
+    username: str
 
 
 class EmailAccountBase(BaseModel):
@@ -181,6 +197,16 @@ class QueuePreview(BaseModel):
     gallery_image_urls: list[str]
 
 
+class DashboardRecentPost(BaseModel):
+    id: int
+    title: str
+    site_name: str
+    site_url: str
+    post_url: str | None = None
+    published_at: datetime
+    status: PublishStatus
+
+
 class PublishLogRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -203,6 +229,10 @@ class DashboardStats(BaseModel):
     pending: int
     processing: int
     errors: int
+    failed: int
+    total_published: int
+    active_sites: int
+    active_rules: int
 
 
 class GlobalSettings(BaseModel):
@@ -211,4 +241,3 @@ class GlobalSettings(BaseModel):
     notifications_enabled: bool | None = None
     whatsapp_notify_number: str | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
-

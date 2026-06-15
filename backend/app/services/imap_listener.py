@@ -153,13 +153,52 @@ class ImapListener:
                     time.sleep(account.polling_interval_seconds)
             return processed
 
+    async def load_single_rule_config(
+        self,
+        session: AsyncSession,
+        account_id: int,
+        rule_id: int,
+    ) -> AccountConfig | None:
+        """Carrega a conta e apenas a regra solicitada para execução manual."""
+        account = await session.get(EmailAccount, account_id)
+        if not account or not account.is_active:
+            return None
+
+        rule = await session.get(MatchRule, rule_id)
+        if not rule or rule.email_account_id != account.id:
+            return None
+
+        return AccountConfig(
+            id=account.id,
+            name=account.name,
+            host=account.imap_host,
+            port=account.imap_port,
+            use_ssl=account.use_ssl,
+            username=account.username,
+            password=decrypt_secret(account.encrypted_password),
+            folder=account.folder,
+            polling_interval_seconds=30,
+            rules=[
+                RuleConfig(
+                    id=rule.id,
+                    sender_contains=rule.sender_contains,
+                    sender_name_contains=rule.sender_name_contains,
+                    subject_regex=rule.subject_regex,
+                )
+            ],
+        )
+
+    def run_single_rule_config(self, config: AccountConfig) -> int:
+        """Executa IMAP de forma síncrona usando dados já carregados do banco."""
+        return self._process_account(config, use_idle=False)
+
     def _process_unseen_messages(self, client: IMAPClient, account: AccountConfig) -> int:
         uids = client.search(["UNSEEN"])
         if not uids:
             return 0
 
         processed = 0
-        fetched = client.fetch(uids, ["RFC822"])
+        fetched = client.fetch(uids, ["BODY.PEEK[]"])
         for uid, payload in fetched.items():
             raw_email = self._raw_email_from_payload(payload)
             if not raw_email:
@@ -183,7 +222,13 @@ class ImapListener:
 
     @staticmethod
     def _raw_email_from_payload(payload: dict[Any, Any]) -> bytes | None:
-        value = payload.get(b"RFC822") or payload.get("RFC822")
+        # BODY.PEEK[] retorna a chave b"BODY[]"—usar PEEK evita marcar como lido automaticamente
+        value = (
+            payload.get(b"BODY[]")
+            or payload.get("BODY[]")
+            or payload.get(b"RFC822")  # fallback para servidores antigos
+            or payload.get("RFC822")
+        )
         return value if isinstance(value, bytes) else None
 
     @staticmethod

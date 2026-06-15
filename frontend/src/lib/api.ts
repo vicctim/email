@@ -55,6 +55,8 @@ export const sitesApi = {
   update: (id: number, data: Record<string, unknown>) => api.put(`/api/sites/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/api/sites/${id}`),
   test: (id: number) => api.post(`/api/sites/${id}/test`).then((r) => r.data),
+  categories: (id: number) => api.get(`/api/sites/${id}/categories`).then((r) => r.data),
+  authors: (id: number) => api.get(`/api/sites/${id}/authors`).then((r) => r.data),
 };
 
 // ── Email Accounts ────────────────────────
@@ -75,6 +77,7 @@ export const rulesApi = {
   update: (id: number, data: Record<string, unknown>) => api.put(`/api/rules/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/api/rules/${id}`),
   toggle: (id: number) => api.patch(`/api/rules/${id}/toggle`).then((r) => r.data),
+  run: (id: number) => api.post(`/api/rules/${id}/run`).then((r) => r.data),
 };
 
 // ── Queue ─────────────────────────────────
@@ -124,4 +127,3 @@ export const pluginApi = {
     window.URL.revokeObjectURL(url);
   },
 };
-

@@ -5,6 +5,7 @@ import { ListOrdered, Eye, XCircle, RotateCcw, Loader2 } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
 import Modal from "@/components/ui/Modal";
 import { queueApi } from "@/lib/api";
+import { formatDateTime } from "@/lib/time";
 
 interface QueueItem {
   id: number;
@@ -77,10 +78,15 @@ export default function QueuePage() {
     }
   }
 
-  async function handleRetry(id: number) {
-    setActionLoading(id);
+  async function handleRetry(item: QueueItem) {
+    if (item.status === "published") {
+      const confirmed = confirm("Republicar este item no WordPress? Use esta ação quando o post foi apagado diretamente no WordPress.");
+      if (!confirmed) return;
+    }
+
+    setActionLoading(item.id);
     try {
-      await queueApi.retry(id);
+      await queueApi.retry(item.id);
       loadQueue();
     } finally {
       setActionLoading(null);
@@ -94,7 +100,7 @@ export default function QueuePage() {
         description="Acompanhe o status de cada email capturado"
         actions={
           <div style={{ display: "flex", gap: 6 }}>
-            {["all", "pending", "scheduled", "processing", "published", "failed"].map((f) => (
+            {["all", "pending", "scheduled", "processing", "published", "failed", "cancelled"].map((f) => (
               <button
                 key={f}
                 className={`btn btn-sm ${filter === f ? "btn-primary" : "btn-secondary"}`}
@@ -150,9 +156,7 @@ export default function QueuePage() {
                     </span>
                   </td>
                   <td style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    {item.scheduled_at
-                      ? new Date(item.scheduled_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
-                      : "—"}
+                    {formatDateTime(item.scheduled_at)}
                   </td>
                   <td style={{ fontSize: 13 }}>
                     {item.attempts}/{item.max_attempts}
@@ -173,12 +177,12 @@ export default function QueuePage() {
                           {actionLoading === item.id ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <XCircle size={14} />}
                         </button>
                       )}
-                      {item.status === "failed" && (
+                      {(item.status === "failed" || item.status === "cancelled" || item.status === "published") && (
                         <button
                           className="btn btn-ghost btn-sm btn-icon"
-                          onClick={() => handleRetry(item.id)}
+                          onClick={() => handleRetry(item)}
                           disabled={actionLoading === item.id}
-                          title="Tentar novamente"
+                          title={item.status === "published" ? "Republicar" : "Tentar novamente"}
                           style={{ color: "var(--warning-500)" }}
                         >
                           {actionLoading === item.id ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <RotateCcw size={14} />}

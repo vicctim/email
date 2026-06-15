@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Save, Loader2, Eye, EyeOff, Copy, Download, Plug } from "lucide-react";
+import { Save, Loader2, Download, Plug } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
 import { settingsApi, pluginApi } from "@/lib/api";
 
@@ -9,15 +9,12 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [showSecret, setShowSecret] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [form, setForm] = useState({
     default_publish_delay: 10,
     polling_interval_seconds: 60,
     whatsapp_notify_number: "",
     evolution_instance: "emailext",
-    api_secret_key: "",
   });
 
   useEffect(() => {
@@ -117,49 +114,6 @@ export default function SettingsPage() {
             onChange={(e) => setForm({ ...form, evolution_instance: e.target.value })}
           />
         </div>
-
-        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 18, marginTop: 28 }}>Segurança</h3>
-        <div className="form-group">
-          <label className="input-label">Chave Secreta da API</label>
-          <div style={{ display: "flex", gap: 6 }}>
-            <div style={{ position: "relative", flex: 1 }}>
-              <input
-                className="input"
-                type={showSecret ? "text" : "password"}
-                value={form.api_secret_key}
-                onChange={(e) => setForm({ ...form, api_secret_key: e.target.value })}
-                placeholder="Gerada automaticamente"
-                style={{ paddingRight: 40, fontFamily: "monospace", fontSize: 13 }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowSecret(!showSecret)}
-                style={{
-                  position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
-                  background: "none", border: "none", cursor: "pointer",
-                  color: "var(--text-muted)", padding: 4,
-                }}
-              >
-                {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
-            </div>
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => {
-                navigator.clipboard.writeText(form.api_secret_key);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }}
-              style={{ flexShrink: 0 }}
-            >
-              <Copy size={14} />
-              {copied ? "Copiado!" : "Copiar"}
-            </button>
-          </div>
-          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-            Usada para autenticação entre o backend e os plugins WordPress
-          </p>
-        </div>
       </div>
 
       {/* ── Plugin WordPress ── */}
@@ -205,10 +159,10 @@ export default function SettingsPage() {
             </li>
             <li>Clique em <strong>"Instalar agora"</strong> e depois em <strong>"Ativar"</strong></li>
             <li>
-              Vá em <strong>Configurações → Email Extractor</strong> e cole a{" "}
-              <strong>Chave Secreta da API</strong> acima
+              Vá em <strong>Configurações → Email Extractor</strong> no WordPress e copie o{" "}
+              <strong>Token de Autenticação</strong>
             </li>
-            <li>Informe a URL deste backend e salve — pronto!</li>
+            <li>Cadastre ou edite o site em <strong>Sites WordPress</strong> e cole o token no campo <strong>Token do Plugin</strong></li>
           </ol>
         </div>
       </div>

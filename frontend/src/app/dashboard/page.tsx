@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Send, Clock, AlertTriangle, CheckCircle2, Globe, ArrowUpRight } from "lucide-react";
+import { Send, Clock, AlertTriangle, CheckCircle2, Globe, ArrowUpRight, Download, Plug, Loader2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import PageHeader from "@/components/layout/PageHeader";
 import StatCard from "@/components/ui/StatCard";
-import { dashboardApi } from "@/lib/api";
+import { dashboardApi, pluginApi } from "@/lib/api";
+import { APP_TIME_ZONE, formatDateTime } from "@/lib/time";
 
 interface DashboardStats {
   published_today: number;
   pending: number;
+  processing: number;
+  errors: number;
   failed: number;
   total_published: number;
   active_sites: number;
@@ -30,10 +33,18 @@ const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 function generateEmptyWeek(): { day: string; posts: number }[] {
   const data = [];
+  const todayParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date()).split("-");
+  const baseDate = new Date(Date.UTC(Number(todayParts[0]), Number(todayParts[1]) - 1, Number(todayParts[2]), 12));
+
   for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    data.push({ day: weekDays[d.getDay()], posts: 0 });
+    const d = new Date(baseDate);
+    d.setUTCDate(baseDate.getUTCDate() - i);
+    data.push({ day: weekDays[d.getUTCDay()], posts: 0 });
   }
   return data;
 }
@@ -43,6 +54,7 @@ export default function DashboardPage() {
   const [recent, setRecent] = useState<RecentPost[]>([]);
   const [weeklyData, setWeeklyData] = useState<{ day: string; posts: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -59,6 +71,8 @@ export default function DashboardPage() {
         setStats({
           published_today: 0,
           pending: 0,
+          processing: 0,
+          errors: 0,
           failed: 0,
           total_published: 0,
           active_sites: 0,
@@ -111,7 +125,7 @@ export default function DashboardPage() {
         />
         <StatCard
           label="Falhas"
-          value={stats?.failed ?? 0}
+          value={stats?.failed ?? stats?.errors ?? 0}
           icon={AlertTriangle}
           color="error"
         />
@@ -173,6 +187,51 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Plugin CTA */}
+      <div className="glass-card" style={{
+        padding: "20px 24px",
+        marginBottom: 32,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 16,
+        borderColor: "rgba(51, 129, 255, 0.25)",
+        background: "rgba(51, 129, 255, 0.05)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{
+            width: 40,
+            height: 40,
+            borderRadius: "var(--radius-md)",
+            background: "rgba(51, 129, 255, 0.15)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}>
+            <Plug size={20} color="var(--brand-400)" />
+          </div>
+          <div>
+            <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>Plugin WordPress</p>
+            <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              Instale o plugin <strong>Email Extractor Bridge</strong> em cada site para receber posts automaticamente
+            </p>
+          </div>
+        </div>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={async () => {
+            setDownloading(true);
+            try { await pluginApi.download(); } catch { /* ignore */ } finally { setDownloading(false); }
+          }}
+          disabled={downloading}
+          style={{ flexShrink: 0 }}
+        >
+          {downloading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Download size={14} />}
+          {downloading ? "Preparando..." : "Baixar Plugin"}
+        </button>
+      </div>
+
       {/* Recent Posts */}
       <div style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 14 }}>Últimas Publicações</h2>
@@ -209,12 +268,7 @@ export default function DashboardPage() {
                     </td>
                     <td>
                       <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                        {new Date(post.published_at).toLocaleString("pt-BR", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        {formatDateTime(post.published_at)}
                       </span>
                     </td>
                     <td>

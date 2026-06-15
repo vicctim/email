@@ -66,6 +66,7 @@ services:
       # App
       APP_ENV: production
       APP_DEBUG: "false"
+      APP_TIMEZONE: America/Sao_Paulo
       APP_SECRET_KEY: ${APP_SECRET_KEY:?Defina APP_SECRET_KEY no .env}
 
       # Database
@@ -134,6 +135,7 @@ services:
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
+      APP_TIMEZONE: America/Sao_Paulo
       APP_SECRET_KEY: ${APP_SECRET_KEY}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-emailext}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-emailext}
       REDIS_URL: redis://redis:6379/0
@@ -170,6 +172,7 @@ services:
     command: celery -A app.workers.celery_app beat -l info --schedule /tmp/celerybeat-schedule
     environment:
       APP_ENV: production
+      APP_TIMEZONE: America/Sao_Paulo
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-emailext}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-emailext}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1

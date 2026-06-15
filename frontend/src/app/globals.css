@@ -1,5 +1,5 @@
-@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
 
 :root {
   /* Brand */
@@ -357,14 +357,15 @@ tr:hover td {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(4px);
-  z-index: 50;
+  z-index: 1000;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   overflow-y: auto;
-  padding: 40px 16px;
+  overflow-x: hidden;
+  padding: 40px 16px 60px;
   animation: fadeIn 0.15s ease;
 }
 
@@ -372,11 +373,14 @@ tr:hover td {
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-xl);
-  padding: 28px;
-  max-width: 560px;
   width: 90%;
-  margin: auto 0;
-  box-shadow: var(--shadow-lg);
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 80px);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg), 0 0 60px rgba(0,0,0,0.5);
   animation: fadeIn 0.2s ease;
 }
 
@@ -384,12 +388,21 @@ tr:hover td {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
+  padding: 24px 28px 20px;
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
 }
 
 .modal-header h2 {
   font-size: 18px;
   font-weight: 600;
+}
+
+/* Área de conteúdo do modal — rola quando necessário */
+.modal-body {
+  padding: 24px 28px;
+  overflow-y: auto;
+  flex: 1;
 }
 
 /* ── Skeleton ──────────────────────────── */

@@ -15,6 +15,7 @@ interface Site {
   last_status: string | null;
   last_checked_at: string | null;
   created_at: string;
+  has_plugin_token: boolean;
 }
 
 export default function SitesPage() {
@@ -30,6 +31,7 @@ export default function SitesPage() {
     base_url: "",
     username: "",
     app_password: "",
+    plugin_token: "",
     default_status: "publish",
   });
 
@@ -50,7 +52,7 @@ export default function SitesPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ name: "", base_url: "", username: "", app_password: "", default_status: "publish" });
+    setForm({ name: "", base_url: "", username: "", app_password: "", plugin_token: "", default_status: "publish" });
     setModalOpen(true);
   }
 
@@ -61,6 +63,7 @@ export default function SitesPage() {
       base_url: site.base_url,
       username: site.username,
       app_password: "",
+      plugin_token: "",
       default_status: "publish",
     });
     setModalOpen(true);
@@ -91,8 +94,9 @@ export default function SitesPage() {
     try {
       const result = await sitesApi.test(id);
       setTestResult((prev) => ({ ...prev, [id]: { ok: true, msg: result.message || "Conexão OK" } }));
-    } catch {
-      setTestResult((prev) => ({ ...prev, [id]: { ok: false, msg: "Falha na conexão" } }));
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Falha na conexão";
+      setTestResult((prev) => ({ ...prev, [id]: { ok: false, msg } }));
     } finally {
       setTesting(null);
     }
@@ -154,8 +158,8 @@ export default function SitesPage() {
                         {testResult[site.id].msg}
                       </span>
                     ) : (
-                      <span className="badge badge-neutral">
-                        {site.last_status || "Não testado"}
+                      <span className={`badge ${site.has_plugin_token ? "badge-neutral" : "badge-warning"}`}>
+                        {site.has_plugin_token ? site.last_status || "Não testado" : "Token pendente"}
                       </span>
                     )}
                   </td>
@@ -199,8 +203,24 @@ export default function SitesPage() {
           <input className="input" placeholder="admin" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
         </div>
         <div className="form-group">
-          <label className="input-label">Application Password</label>
+          <label className="input-label">Application Password do WordPress</label>
           <input className="input" type="password" placeholder={editing ? "••••••• (deixe vazio para manter)" : "xxxx xxxx xxxx xxxx"} value={form.app_password} onChange={(e) => setForm({ ...form, app_password: e.target.value })} />
+          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+            Usado para criar posts e enviar imagens pela API nativa do WordPress
+          </p>
+        </div>
+        <div className="form-group">
+          <label className="input-label">Token do Plugin</label>
+          <input
+            className="input"
+            type="password"
+            placeholder={editing ? "••••••• (deixe vazio para manter)" : "Token em Configurações → Email Extractor"}
+            value={form.plugin_token}
+            onChange={(e) => setForm({ ...form, plugin_token: e.target.value })}
+          />
+          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+            Token da instalação do plugin neste site, usado para testar conexão e listar categorias
+          </p>
         </div>
         <div className="form-group">
           <label className="input-label">Status padrão do post</label>

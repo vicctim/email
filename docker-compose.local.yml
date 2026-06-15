@@ -69,6 +69,7 @@ services:
       # App
       APP_ENV: development
       APP_DEBUG: "true"
+      APP_TIMEZONE: America/Sao_Paulo
       APP_SECRET_KEY: dev-secret-key-change-in-production
 
       # Database
@@ -122,6 +123,7 @@ services:
     environment:
       APP_ENV: development
       APP_DEBUG: "true"
+      APP_TIMEZONE: America/Sao_Paulo
       APP_SECRET_KEY: dev-secret-key-change-in-production
       DATABASE_URL: postgresql+asyncpg://emailext:emailext_dev_123@postgres:5432/emailext
       REDIS_URL: redis://redis:6379/0
@@ -159,6 +161,7 @@ services:
     command: celery -A app.workers.celery_app beat -l debug --schedule /tmp/celerybeat-schedule
     environment:
       APP_ENV: development
+      APP_TIMEZONE: America/Sao_Paulo
       DATABASE_URL: postgresql+asyncpg://emailext:emailext_dev_123@postgres:5432/emailext
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1

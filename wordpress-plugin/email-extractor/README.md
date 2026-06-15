@@ -1,6 +1,6 @@
 # Email Extractor Bridge — Plugin WordPress
 
-Plugin que conecta seu site WordPress ao sistema **Email Extractor**, recebendo posts automaticamente via API REST e exibindo galerias de imagens com lightbox fullscreen.
+Plugin que conecta seu site WordPress ao sistema **Email Extractor**, recebendo posts automaticamente via API REST, registrando o histórico de posts recebidos e exibindo galerias de imagens com lightbox fullscreen.
 
 ## Instalação
 
@@ -8,7 +8,7 @@ Plugin que conecta seu site WordPress ao sistema **Email Extractor**, recebendo 
 2. Ative o plugin no painel WordPress → Plugins
 3. Vá em **Configurações → Email Extractor**
 4. Copie o **Token de Autenticação** gerado automaticamente
-5. No painel do Email Extractor, cadastre o site usando esse token
+5. No painel do Email Extractor, cadastre ou edite o site e cole esse token no campo **Token do Plugin**
 
 ## Funcionalidades
 
@@ -18,6 +18,8 @@ Plugin que conecta seu site WordPress ao sistema **Email Extractor**, recebendo 
 |----------|--------|-----------|
 | `/wp-json/email-extractor/v1/publish` | POST | Recebe e publica post com imagens |
 | `/wp-json/email-extractor/v1/status` | GET | Verifica conexão e status do plugin |
+| `/wp-json/email-extractor/v1/categories` | GET | Lista categorias de posts disponíveis |
+| `/wp-json/email-extractor/v1/authors` | GET | Lista autores disponíveis para posts |
 
 **Autenticação:** `Authorization: Bearer <token>`
 

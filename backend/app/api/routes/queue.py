@@ -40,10 +40,16 @@ async def cancel_queue_item(queue_id: int, session: AsyncSession = Depends(get_d
 @router.post("/{queue_id}/retry", response_model=PublishQueueRead)
 async def retry_queue_item(queue_id: int, session: AsyncSession = Depends(get_db)) -> PublishQueue:
     queue_item = await _queue_or_404(session, queue_id)
+    if queue_item.status == PublishStatus.processing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Item já está em processamento")
     queue_item.status = PublishStatus.scheduled
     queue_item.attempts = 0
     queue_item.last_error = None
     queue_item.scheduled_at = datetime.now(timezone.utc)
+    queue_item.started_at = None
+    queue_item.published_at = None
+    queue_item.post_id = None
+    queue_item.post_url = None
     await session.commit()
     await session.refresh(queue_item)
     publish_to_wordpress.apply_async(args=[queue_item.id], queue="publish")
@@ -67,4 +73,3 @@ async def _queue_or_404(session: AsyncSession, queue_id: int) -> PublishQueue:
     if queue_item is None:
         raise HTTPException(status_code=404, detail="Item de fila não encontrado")
     return queue_item
-

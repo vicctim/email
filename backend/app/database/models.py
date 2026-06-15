@@ -67,6 +67,7 @@ class WordPressSite(TimestampMixin, Base):
     base_url: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
     username: Mapped[str] = mapped_column(String(255), nullable=False)
     encrypted_app_password: Mapped[str] = mapped_column(Text, nullable=False)
+    encrypted_plugin_token: Mapped[str | None] = mapped_column(Text)
     auth_type: Mapped[str] = mapped_column(String(40), nullable=False, default="application_password")
     default_status: Mapped[str] = mapped_column(String(20), nullable=False, default="publish")
     default_category_ids: Mapped[list[int]] = mapped_column(JSONB, nullable=False, default=list)
@@ -78,6 +79,10 @@ class WordPressSite(TimestampMixin, Base):
     match_rules: Mapped[list["MatchRule"]] = relationship(back_populates="wordpress_site")
     queue_items: Mapped[list["PublishQueue"]] = relationship(back_populates="wordpress_site")
     logs: Mapped[list["PublishLog"]] = relationship(back_populates="wordpress_site")
+
+    @property
+    def has_plugin_token(self) -> bool:
+        return bool(self.encrypted_plugin_token)
 
 
 class MatchRule(TimestampMixin, Base):
@@ -172,4 +177,3 @@ class PublishLog(TimestampMixin, Base):
     queue_item: Mapped[PublishQueue | None] = relationship(back_populates="logs")
     email_account: Mapped[EmailAccount | None] = relationship(back_populates="logs")
     wordpress_site: Mapped[WordPressSite | None] = relationship(back_populates="logs")
-

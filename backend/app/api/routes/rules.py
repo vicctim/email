@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +10,7 @@ from app.database.models import MatchRule
 from app.services.audit import add_audit_log
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/rules", tags=["rules"], dependencies=[Depends(require_admin)])
 
 
@@ -91,3 +94,41 @@ async def _rule_or_404(session: AsyncSession, rule_id: int) -> MatchRule:
     if rule is None:
         raise HTTPException(status_code=404, detail="Regra não encontrada")
     return rule
+
+
+@router.post("/{rule_id}/run")
+async def run_rule_now(rule_id: int, session: AsyncSession = Depends(get_db)) -> dict[str, object]:
+    """Executa imediatamente uma varredura IMAP filtrada pela regra informada."""
+    import asyncio
+    from app.services.imap_listener import ImapListener
+
+    rule = await _rule_or_404(session, rule_id)
+
+    listener = ImapListener()
+    config = await listener.load_single_rule_config(session, rule.email_account_id, rule_id)
+    if config is None:
+        raise HTTPException(status_code=409, detail="Conta de email inativa ou regra inconsistente")
+
+    try:
+        processed = await asyncio.wait_for(
+            asyncio.to_thread(listener.run_single_rule_config, config),
+            timeout=60.0,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Timeout ao verificar caixa de email (>60s)")
+    except Exception as exc:
+        logger.exception("Erro ao executar regra manual %s", rule_id)
+        raise HTTPException(status_code=502, detail=f"Falha ao verificar caixa de email: {exc}") from exc
+
+    add_audit_log(
+        session,
+        event="rule_run_manual",
+        message=f"Execucao manual da regra '{rule.name}' — {processed} email(s) enfileirado(s)",
+        payload={"rule_id": rule.id, "processed": processed},
+    )
+    await session.commit()
+    return {
+        "ok": True,
+        "processed": processed,
+        "message": f"{processed} email(s) encontrado(s) e enfileirado(s) para publicacao",
+    }

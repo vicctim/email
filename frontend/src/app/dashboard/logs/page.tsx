@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ScrollText, ChevronDown, ChevronUp } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
 import { logsApi } from "@/lib/api";
+import { formatDateTime } from "@/lib/time";
 
 interface LogEntry {
   id: number;
@@ -72,7 +73,7 @@ export default function LogsPage() {
                 <span className={`badge ${levelBadge[log.level] || "badge-neutral"}`} style={{ minWidth: 60, justifyContent: "center" }}>{log.level}</span>
                 <span style={{ fontWeight: 500, flex: 1 }}>{log.event}</span>
                 <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>
-                  {new Date(log.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  {formatDateTime(log.created_at)}
                 </span>
                 {expanded === log.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </button>

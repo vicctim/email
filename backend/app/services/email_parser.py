@@ -1,6 +1,7 @@
 import hashlib
 import re
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -70,8 +71,9 @@ class ParsedEmail:
 
 
 class EmailParser:
-    allowed_blocks = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol"}
+    allowed_blocks = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "blockquote"}
     allowed_inline = {"a", "strong", "b", "em", "i", "br", "span", "li", "img"}
+    table_text_tags = {"td", "div"}  # fallback para emails tipo newsletter
 
     def parse_message(
         self,
@@ -120,10 +122,11 @@ class EmailParser:
             title = heading.get_text(" ", strip=True)
         title = title or "Sem título"
 
+        self._remove_duplicate_title_block(container, title)
+        self._convert_lead_emphasis_to_blockquote(container)
+
         excerpt_tag = container.find("blockquote")
         excerpt = excerpt_tag.get_text(" ", strip=True) if excerpt_tag else None
-        if excerpt_tag:
-            excerpt_tag.decompose()
 
         image_urls = self._image_urls(container, base_url)
         featured_image_url = self._featured_image_url(container, image_urls)
@@ -138,6 +141,11 @@ class EmailParser:
             convert_bold_to_h3=convert_bold_to_h3,
             excluded_images={url for url in [featured_image_url, *gallery_image_urls] if url},
         )
+
+        # Fallback: email com layout em tabela (newsletters) — extrai de td/div
+        if not content_html.strip():
+            content_html = self._table_fallback_html(container)
+
         content_html = self.sanitize_html(content_html)
         content_hash = hashlib.sha256(f"{title}\n{content_html}".encode("utf-8")).hexdigest()
 
@@ -149,6 +157,19 @@ class EmailParser:
             gallery_image_urls=gallery_image_urls,
             content_hash=content_hash,
         )
+
+    def normalize_content_html(self, html: str, *, title: str | None = None) -> str:
+        soup = BeautifulSoup(html or "", "lxml")
+        container = soup.body or soup
+        if title:
+            self._remove_duplicate_title_block(container, title)
+        self._convert_lead_emphasis_to_blockquote(container)
+        content_html = self._content_html(
+            container,
+            convert_bold_to_h3=True,
+            excluded_images=set(),
+        )
+        return self.sanitize_html(content_html)
 
     @staticmethod
     def clean_subject(subject: str) -> str:
@@ -188,11 +209,81 @@ class EmailParser:
             text = tag.get_text(" ", strip=True).lower()
             if not text:
                 continue
-            if any(pattern in text for pattern in FOOTER_PATTERNS) or "©" in text:
+            # Só remove blocos que são claramente footer/assinatura
+            # e que não têm conteúdo substancial (>120 chars é provavel conteúdo real)
+            is_short = len(text) <= 120
+            has_footer_pattern = any(pattern in text for pattern in FOOTER_PATTERNS) or "©" in tag.get_text(" ", strip=True)
+            if has_footer_pattern and is_short:
                 tag.decompose()
                 continue
             if tag.name == "table" and self._looks_like_signature_table(tag):
                 tag.decompose()
+
+    def _remove_duplicate_title_block(self, container: Tag, title: str) -> None:
+        normalized_title = self._normalize_text(title)
+        if not normalized_title:
+            return
+
+        for tag in container.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "td"], recursive=True):
+            if not isinstance(tag, Tag):
+                continue
+            if tag.name in {"div", "td"} and tag.find(["h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "td"], recursive=False):
+                continue
+
+            text = tag.get_text(" ", strip=True)
+            if not text:
+                continue
+            if self._is_duplicate_title_text(text, title):
+                tag.decompose()
+            return
+
+    def _convert_lead_emphasis_to_blockquote(self, container: Tag) -> None:
+        for tag in container.find_all(["p", "div", "em", "i"], recursive=True):
+            if not isinstance(tag, Tag):
+                continue
+            if tag.name in {"em", "i"} and isinstance(tag.parent, Tag) and tag.parent.name in {"p", "div"}:
+                continue
+            if tag.name == "div" and tag.find(["p", "div", "blockquote"], recursive=False):
+                continue
+            if not tag.get_text(" ", strip=True):
+                continue
+            if not self._is_isolated_emphasis_block(tag):
+                return
+
+            emphasis = tag if tag.name in {"em", "i"} else tag.find(["em", "i"])
+            if not emphasis:
+                return
+            html = emphasis.decode_contents().strip()
+            if not html:
+                return
+            blockquote = BeautifulSoup(f"<blockquote>{html}</blockquote>", "lxml").blockquote
+            if blockquote:
+                tag.replace_with(blockquote)
+            return
+
+    @staticmethod
+    def _is_isolated_emphasis_block(tag: Tag) -> bool:
+        if tag.name in {"em", "i"}:
+            return bool(tag.get_text(" ", strip=True))
+        children = [child for child in tag.contents if not (isinstance(child, NavigableString) and not child.strip())]
+        if len(children) != 1 or not isinstance(children[0], Tag):
+            return False
+        return children[0].name in {"em", "i"} and bool(children[0].get_text(" ", strip=True))
+
+    @staticmethod
+    def _normalize_text(value: str) -> str:
+        return re.sub(r"\s+", " ", unescape(value or "").strip()).casefold()
+
+    @classmethod
+    def _is_duplicate_title_text(cls, text: str, title: str) -> bool:
+        normalized_text = cls._normalize_text(text)
+        normalized_title = cls._normalize_text(title)
+        if not normalized_text or not normalized_title:
+            return False
+        if normalized_text == normalized_title:
+            return True
+        similarity = SequenceMatcher(None, normalized_text, normalized_title).ratio()
+        return similarity >= 0.86
 
     @staticmethod
     def _looks_like_signature_table(tag: Tag) -> bool:
@@ -256,6 +347,27 @@ class EmailParser:
             html = self._clean_block(tag, convert_bold_to_h3, excluded_images)
             if html:
                 blocks.append(html)
+        return "\n".join(blocks)
+
+    def _table_fallback_html(self, container: Tag) -> str:
+        """Fallback para emails com layout em tabela: extrai parágrafos de td/div."""
+        seen_texts: set[str] = set()
+        blocks: list[str] = []
+        for tag in container.find_all(["td", "div", "p"], recursive=True):
+            # Pula se tem filhos que já são containers (evita duplicar)
+            children_blocks = tag.find_all(["td", "div", "p"], recursive=False)
+            if children_blocks:
+                continue
+            text = tag.get_text(" ", strip=True)
+            if not text or len(text) < 20 or text in seen_texts:
+                continue
+            # Ignora rodapé / footer patterns
+            if any(p in text.lower() for p in FOOTER_PATTERNS) or "©" in text:
+                continue
+            seen_texts.add(text)
+            # Wraps como parágrafo simples
+            safe = text.replace("<", "&lt;").replace(">", "&gt;")
+            blocks.append(f"<p>{safe}</p>")
         return "\n".join(blocks)
 
     def _clean_block(self, tag: Tag, convert_bold_to_h3: bool, excluded_images: set[str]) -> str:

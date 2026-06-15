@@ -3,7 +3,7 @@
  * Plugin Name: Email Extractor Bridge
  * Plugin URI: https://github.com/vicctim/email-extractor
  * Description: Recebe posts automaticamente do sistema Email Extractor e exibe galeria com lightbox.
- * Version: 1.0.0
+ * Version: 1.1.2
  * Author: Victor Samuel
  * Author URI: https://victorsamuel.com.br
  * Text Domain: email-extractor
@@ -13,7 +13,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('EMAILEXT_VERSION', '1.0.0');
+define('EMAILEXT_VERSION', '1.1.2');
 define('EMAILEXT_PATH', plugin_dir_path(__FILE__));
 define('EMAILEXT_URL', plugin_dir_url(__FILE__));
 

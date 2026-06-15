@@ -31,7 +31,7 @@ celery_app.conf.update(
             "schedule": 86400.0,
         },
     },
-    timezone="UTC",
+    timezone=settings.app_timezone,
     enable_utc=True,
 )
 

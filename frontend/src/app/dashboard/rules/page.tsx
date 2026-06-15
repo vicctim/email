@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, GitBranch, Trash2, Pencil } from "lucide-react";
+import { Plus, GitBranch, Trash2, Pencil, Play, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
 import Modal from "@/components/ui/Modal";
 import { rulesApi, sitesApi, accountsApi } from "@/lib/api";
@@ -15,6 +15,8 @@ interface Rule {
   subject_regex: string | null;
   delay_minutes: number;
   post_status: string;
+  category_ids: number[];
+  author_username: string | null;
   email_account_id: number;
   wordpress_site_id: number;
   email_account?: { name: string };
@@ -22,6 +24,25 @@ interface Rule {
 }
 
 interface SelectOption { id: number; name: string }
+interface CategoryOption { id: number; name: string; slug: string; count: number }
+interface AuthorOption { id: number; name: string; username: string }
+
+interface RuleForm extends Record<string, unknown> {
+  name: string;
+  email_account_id: number;
+  wordpress_site_id: number;
+  sender_contains: string;
+  sender_name_contains: string;
+  subject_regex: string;
+  delay_minutes: number;
+  post_status: string;
+  category_ids: number[];
+  author_username: string;
+  remove_signature: boolean;
+  remove_footer: boolean;
+  convert_bold_to_h3: boolean;
+  extract_gallery: boolean;
+}
 
 export default function RulesPage() {
   const [rules, setRules] = useState<Rule[]>([]);
@@ -31,8 +52,16 @@ export default function RulesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Rule | null>(null);
   const [regexTest, setRegexTest] = useState("");
+  const [running, setRunning] = useState<number | null>(null);
+  const [runResult, setRunResult] = useState<{ ruleId: number; ok: boolean; message: string } | null>(null);
+  const [categoriesBySite, setCategoriesBySite] = useState<Record<number, CategoryOption[]>>({});
+  const [authorsBySite, setAuthorsBySite] = useState<Record<number, AuthorOption[]>>({});
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [loadingAuthors, setLoadingAuthors] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [authorError, setAuthorError] = useState<string | null>(null);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<RuleForm>({
     name: "",
     email_account_id: 0,
     wordpress_site_id: 0,
@@ -41,6 +70,8 @@ export default function RulesPage() {
     subject_regex: "",
     delay_minutes: 10,
     post_status: "publish",
+    category_ids: [],
+    author_username: "",
     remove_signature: true,
     remove_footer: true,
     convert_bold_to_h3: true,
@@ -64,17 +95,23 @@ export default function RulesPage() {
 
   function openCreate() {
     setEditing(null);
+    const siteId = sites[0]?.id || 0;
+    setCategoryError(null);
+    setAuthorError(null);
     setForm({
-      name: "", email_account_id: accounts[0]?.id || 0, wordpress_site_id: sites[0]?.id || 0,
+      name: "", email_account_id: accounts[0]?.id || 0, wordpress_site_id: siteId,
       sender_contains: "", sender_name_contains: "", subject_regex: "",
-      delay_minutes: 10, post_status: "publish",
+      delay_minutes: 10, post_status: "publish", category_ids: [], author_username: "",
       remove_signature: true, remove_footer: true, convert_bold_to_h3: true, extract_gallery: true,
     });
+    if (siteId) void loadSiteOptions(siteId);
     setModalOpen(true);
   }
 
   function openEdit(rule: Rule) {
     setEditing(rule);
+    setCategoryError(null);
+    setAuthorError(null);
     setForm({
       name: rule.name,
       email_account_id: rule.email_account_id,
@@ -84,9 +121,55 @@ export default function RulesPage() {
       subject_regex: rule.subject_regex || "",
       delay_minutes: rule.delay_minutes,
       post_status: rule.post_status,
+      category_ids: Array.isArray(rule.category_ids) ? rule.category_ids : [],
+      author_username: rule.author_username || "",
       remove_signature: true, remove_footer: true, convert_bold_to_h3: true, extract_gallery: true,
     });
+    if (rule.wordpress_site_id) void loadSiteOptions(rule.wordpress_site_id);
     setModalOpen(true);
+  }
+
+  async function loadSiteOptions(siteId: number) {
+    await Promise.all([loadCategories(siteId), loadAuthors(siteId)]);
+  }
+
+  async function loadCategories(siteId: number) {
+    if (!siteId || categoriesBySite[siteId]) return;
+    setLoadingCategories(true);
+    setCategoryError(null);
+    try {
+      const data = await sitesApi.categories(siteId);
+      setCategoriesBySite((prev) => ({ ...prev, [siteId]: Array.isArray(data) ? data : [] }));
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Não foi possível carregar categorias";
+      setCategoryError(msg);
+      setCategoriesBySite((prev) => ({ ...prev, [siteId]: [] }));
+    } finally {
+      setLoadingCategories(false);
+    }
+  }
+
+  async function loadAuthors(siteId: number) {
+    if (!siteId || authorsBySite[siteId]) return;
+    setLoadingAuthors(true);
+    setAuthorError(null);
+    try {
+      const data = await sitesApi.authors(siteId);
+      setAuthorsBySite((prev) => ({ ...prev, [siteId]: Array.isArray(data) ? data : [] }));
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Não foi possível carregar autores";
+      setAuthorError(msg);
+      setAuthorsBySite((prev) => ({ ...prev, [siteId]: [] }));
+    } finally {
+      setLoadingAuthors(false);
+    }
+  }
+
+  function handleSiteChange(siteId: number) {
+    setForm({ ...form, wordpress_site_id: siteId, category_ids: [], author_username: "" });
+    setCategoryError(null);
+    setAuthorError(null);
+    if (siteId) void loadSiteOptions(siteId);
   }
 
   async function handleSubmit() {
@@ -108,11 +191,30 @@ export default function RulesPage() {
     loadData();
   }
 
+  async function handleRun(id: number) {
+    setRunning(id);
+    setRunResult(null);
+    try {
+      const result = await rulesApi.run(id);
+      setRunResult({ ruleId: id, ok: true, message: result.message || `${result.processed} email(s) enfileirado(s)` });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Erro ao executar regra";
+      setRunResult({ ruleId: id, ok: false, message: msg });
+    } finally {
+      setRunning(null);
+      setTimeout(() => setRunResult(null), 5000);
+    }
+  }
+
   async function handleDelete(id: number) {
     if (!confirm("Remover esta regra?")) return;
     await rulesApi.delete(id);
     loadData();
   }
+
+  const selectedCategories = form.wordpress_site_id ? categoriesBySite[form.wordpress_site_id] || [] : [];
+  const selectedAuthors = form.wordpress_site_id ? authorsBySite[form.wordpress_site_id] || [] : [];
+  const selectedCategoryId = form.category_ids[0] || "";
 
   return (
     <div>
@@ -151,7 +253,7 @@ export default function RulesPage() {
                 <th>Assunto</th>
                 <th>Site Destino</th>
                 <th>Delay</th>
-                <th style={{ width: 100 }}>Ações</th>
+                <th style={{ width: 130 }}>Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -188,6 +290,17 @@ export default function RulesPage() {
                   <td style={{ fontSize: 13, color: "var(--text-muted)" }}>{rule.delay_minutes} min</td>
                   <td>
                     <div style={{ display: "flex", gap: 4 }}>
+                      <button
+                        className="btn btn-ghost btn-sm btn-icon"
+                        onClick={() => handleRun(rule.id)}
+                        disabled={running === rule.id}
+                        title="Executar regra agora"
+                        style={{ color: "var(--brand-400)" }}
+                      >
+                        {running === rule.id
+                          ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+                          : <Play size={14} />}
+                      </button>
                       <button className="btn btn-ghost btn-sm btn-icon" onClick={() => openEdit(rule)} title="Editar">
                         <Pencil size={14} />
                       </button>
@@ -200,6 +313,35 @@ export default function RulesPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Toast de resultado da execução */}
+      {runResult && (
+        <div style={{
+          position: "fixed",
+          bottom: 28,
+          right: 28,
+          zIndex: 2000,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "14px 20px",
+          borderRadius: "var(--radius-lg)",
+          background: runResult.ok ? "rgba(34, 197, 94, 0.12)" : "rgba(239, 68, 68, 0.12)",
+          border: `1px solid ${runResult.ok ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+          color: runResult.ok ? "var(--success-500)" : "var(--error-500)",
+          fontSize: 13,
+          fontWeight: 500,
+          boxShadow: "var(--shadow-lg)",
+          backdropFilter: "blur(8px)",
+          animation: "fadeIn 0.2s ease",
+          maxWidth: 380,
+        }}>
+          {runResult.ok
+            ? <CheckCircle2 size={16} style={{ flexShrink: 0 }} />
+            : <AlertCircle size={16} style={{ flexShrink: 0 }} />}
+          {runResult.message}
         </div>
       )}
 
@@ -219,10 +361,67 @@ export default function RulesPage() {
           </div>
           <div className="form-group">
             <label className="input-label">Site WordPress destino</label>
-            <select className="input" value={form.wordpress_site_id} onChange={(e) => setForm({ ...form, wordpress_site_id: Number(e.target.value) })}>
+            <select className="input" value={form.wordpress_site_id} onChange={(e) => handleSiteChange(Number(e.target.value))}>
               <option value={0}>Selecione...</option>
               {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="form-group">
+            <label className="input-label">Categoria do post</label>
+            <select
+              className="input"
+              value={selectedCategoryId}
+              disabled={!form.wordpress_site_id || loadingCategories || !!categoryError}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                setForm({ ...form, category_ids: value ? [value] : [] });
+              }}
+            >
+              <option value="">
+                {loadingCategories ? "Carregando categorias..." : "Sem categoria específica"}
+              </option>
+              {selectedCategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+            {categoryError ? (
+              <p style={{ fontSize: 11, color: "var(--error-500)", marginTop: 4 }}>{categoryError}</p>
+            ) : (
+              <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                A lista vem do WordPress selecionado
+              </p>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label className="input-label">Autor do post</label>
+            <select
+              className="input"
+              value={form.author_username}
+              disabled={!form.wordpress_site_id || loadingAuthors || !!authorError}
+              onChange={(e) => setForm({ ...form, author_username: e.target.value })}
+            >
+              <option value="">
+                {loadingAuthors ? "Carregando autores..." : "Autor padrão do WordPress"}
+              </option>
+              {selectedAuthors.map((author) => (
+                <option key={author.id} value={author.username}>
+                  {author.name} (@{author.username})
+                </option>
+              ))}
+            </select>
+            {authorError ? (
+              <p style={{ fontSize: 11, color: "var(--error-500)", marginTop: 4 }}>{authorError}</p>
+            ) : (
+              <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                Define o autor das publicações automáticas
+              </p>
+            )}
           </div>
         </div>
 
