@@ -184,7 +184,10 @@ class EmailParser:
         return ""
 
     def _remove_footer_blocks(self, container: Tag) -> None:
-        for tag in list(container.find_all(["p", "div", "span", "td", "table", "footer"])):
+        # Processa do mais interno para o mais externo: evita que uma tabela
+        # de layout que envolve o email inteiro seja decomposta só porque um
+        # rodapé/copyright está em algum nó aninhado dentro dela.
+        for tag in reversed(list(container.find_all(["p", "div", "span", "td", "table", "footer"]))):
             text = tag.get_text(" ", strip=True).lower()
             if not text:
                 continue

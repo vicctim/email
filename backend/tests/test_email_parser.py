@@ -49,3 +49,29 @@ def test_parser_removes_signature_and_sanitizes_html() -> None:
     assert "onclick" not in parsed.content_html
     assert "onerror" not in parsed.content_html
 
+
+LAYOUT_TABLE_HTML = """
+<html>
+  <body>
+    <table>
+      <tr><td><h1>Festival de Inverno anuncia atrações</h1></td></tr>
+      <tr><td><blockquote>Programação reúne shows e gastronomia na praça central.</blockquote></td></tr>
+      <tr><td><p>O evento ocorre durante todo o mês com entrada gratuita.</p></td></tr>
+      <tr><td><img src="https://cdn.festival.test/destaque.jpg" width="900" height="500"></td></tr>
+      <tr><td><p>Todos os direitos reservados © Festival de Inverno</p></td></tr>
+    </table>
+  </body>
+</html>
+"""
+
+
+def test_parser_keeps_content_when_footer_is_inside_layout_table() -> None:
+    parsed = EmailParser().parse_html(
+        LAYOUT_TABLE_HTML,
+        subject="Festival de Inverno anuncia atrações",
+    )
+
+    assert "O evento ocorre durante todo o mês" in parsed.content_html
+    assert "Todos os direitos reservados" not in parsed.content_html
+    assert parsed.content_html.strip() != ""
+
