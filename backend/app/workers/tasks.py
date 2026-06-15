@@ -79,6 +79,7 @@ async def _process_email(
             extract_gallery=rule.extract_gallery,
         )
 
+        no_content = not parsed.content_html.strip()
         scheduled_at = datetime.now(timezone.utc) + timedelta(minutes=rule.delay_minutes)
         queue_item = PublishQueue(
             email_account_id=email_account_id,
@@ -94,8 +95,9 @@ async def _process_email(
             parsed_content_html=parsed.content_html,
             featured_image_url=parsed.featured_image_url,
             gallery_image_urls=parsed.gallery_image_urls,
-            status=PublishStatus.scheduled,
-            scheduled_at=scheduled_at,
+            status=PublishStatus.failed if no_content else PublishStatus.scheduled,
+            scheduled_at=None if no_content else scheduled_at,
+            last_error="Parser não extraiu conteúdo do e-mail" if no_content else None,
             max_attempts=3,
         )
         session.add(queue_item)
@@ -105,9 +107,13 @@ async def _process_email(
                 queue_id=queue_item.id,
                 email_account_id=email_account_id,
                 wordpress_site_id=rule.wordpress_site_id,
-                level=LogLevel.info,
-                event="email_processed",
-                message=f"E-mail processado e agendado para {scheduled_at.isoformat()}",
+                level=LogLevel.error if no_content else LogLevel.info,
+                event="parse_failed" if no_content else "email_processed",
+                message=(
+                    "Parser não extraiu conteúdo do e-mail — publicação não agendada"
+                    if no_content
+                    else f"E-mail processado e agendado para {scheduled_at.isoformat()}"
+                ),
                 content_preview=parsed.content_html[:1000],
                 payload=parsed.as_dict(),
             )
@@ -127,11 +133,12 @@ async def _process_email(
                 return {"queue_id": existing.id, "status": existing.status.value}
             raise
 
-        publish_to_wordpress.apply_async(
-            args=[queue_item.id],
-            countdown=max(rule.delay_minutes, 0) * 60,
-            queue="publish",
-        )
+        if not no_content:
+            publish_to_wordpress.apply_async(
+                args=[queue_item.id],
+                countdown=max(rule.delay_minutes, 0) * 60,
+                queue="publish",
+            )
         return {"queue_id": queue_item.id, "status": queue_item.status.value}
 
 
