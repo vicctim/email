@@ -4,17 +4,12 @@ on:
   push:
     branches: [main]
 
+# Deploy acontece via GitHub Webhook direto para hooks.victorsamuel.com.br
+# Este workflow existe apenas para mostrar o status do push no GitHub UI.
+# O redeploy real é disparado pelo webhook registrado no repositório.
 jobs:
-  deploy:
-    name: Deploy para VPS
+  status:
+    name: Push registrado
     runs-on: ubuntu-latest
     steps:
-      - name: Executar redeploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          script: bash /srv/clientes/victor/email/scripts/redeploy.sh
-          script_stop: true
-          command_timeout: 10m
+      - run: echo "Push recebido. Redeploy disparado via webhook para o servidor."
