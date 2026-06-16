@@ -263,7 +263,7 @@ class EmailParser:
                 continue
             if self._is_duplicate_title_text(text, title):
                 tag.decompose()
-            return
+                return
 
     def _convert_lead_emphasis_to_blockquote(self, container: Tag) -> None:
         for tag in container.find_all(["p", "div", "em", "i"], recursive=True):

@@ -113,6 +113,24 @@ def test_normalize_content_removes_duplicate_title_and_bare_emphasis() -> None:
     )
 
 
+def test_parser_removes_duplicate_title_even_when_preceded_by_other_element() -> None:
+    """Título duplicado deve ser removido mesmo havendo elemento antes dele no HTML."""
+    parsed = EmailParser().parse_html(
+        """
+        <html><body>
+          <p>Assessoria de Imprensa - contato@assessoria.com</p>
+          <h1>ExpoQueijo Brasil lança novo concurso internacional</h1>
+          <p>A edição 2026 terá categorias inéditas para queijos maturados.</p>
+        </body></html>
+        """,
+        subject="ExpoQueijo Brasil lança novo concurso internacional",
+    )
+
+    assert parsed.title == "ExpoQueijo Brasil lança novo concurso internacional"
+    assert "<h1>ExpoQueijo Brasil lança novo concurso internacional</h1>" not in parsed.content_html
+    assert "A edição 2026 terá categorias inéditas" in parsed.content_html
+
+
 def _make_multipart_email(subject: str, html_body: str, plain_body: str) -> bytes:
     msg = email.message.MIMEPart(policy=email_policy.default)
     msg["Subject"] = subject
