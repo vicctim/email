@@ -1,5 +1,6 @@
+import logging
 import time
-from collections import defaultdict, deque
+
 from collections.abc import Awaitable, Callable
 
 from fastapi import Request, Response
@@ -11,12 +12,14 @@ from app.config import get_settings
 from app.security import decode_access_token
 
 
+logger = logging.getLogger(__name__)
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app) -> None:
         super().__init__(app)
         self.settings = get_settings()
         self.redis = Redis.from_url(self.settings.redis_url, decode_responses=True)
-        self.memory_hits: dict[str, deque[float]] = defaultdict(deque)
 
     async def dispatch(
         self,
@@ -62,19 +65,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 await self.redis.expire(key, 70)
             return count <= limit, 60
         except Exception:
-            return self._memory_is_allowed(bucket, limit)
-
-    def _memory_is_allowed(self, bucket: str, limit: int) -> tuple[bool, int]:
-        now = time.monotonic()
-        window_start = now - 60
-        hits = self.memory_hits[bucket]
-        while hits and hits[0] < window_start:
-            hits.popleft()
-        if len(hits) >= limit:
-            retry_after = max(1, int(60 - (now - hits[0])))
-            return False, retry_after
-        hits.append(now)
-        return True, 60
+            # Redis indisponível — permite passagem sem rate limit e loga.
+            # Evita memory leak do fallback em memória (defaultdict/deque sem limite).
+            logger.warning("Redis indisponível para rate limit — permitindo request sem throttling")
+            return True, 60
 
     @staticmethod
     def _client_id(request: Request) -> str:

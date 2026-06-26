@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Save, Loader2, Download, Plug } from "lucide-react";
+import { Save, Loader2, Download, Plug, Package } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
 import { settingsApi, pluginApi } from "@/lib/api";
 
@@ -10,6 +10,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [pluginVersion, setPluginVersion] = useState<string | null>(null);
   const [form, setForm] = useState({
     default_publish_delay: 10,
     polling_interval_seconds: 60,
@@ -20,8 +21,14 @@ export default function SettingsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const data = await settingsApi.get();
+        const [data, pluginInfo] = await Promise.all([
+          settingsApi.get(),
+          pluginApi.info().catch(() => null),
+        ]);
         setForm((prev) => ({ ...prev, ...data }));
+        if (pluginInfo?.version) {
+          setPluginVersion(pluginInfo.version);
+        }
       } catch { /* defaults */ }
       finally { setLoading(false); }
     }
@@ -121,6 +128,19 @@ export default function SettingsPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <Plug size={18} style={{ color: "var(--accent)" }} />
           <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Plugin WordPress</h3>
+          {pluginVersion && (
+            <span style={{
+              fontSize: 11,
+              fontWeight: 600,
+              padding: "2px 10px",
+              borderRadius: "var(--radius-full, 999px)",
+              background: "rgba(99, 102, 241, 0.12)",
+              color: "var(--brand-400)",
+              border: "1px solid rgba(99, 102, 241, 0.2)",
+            }}>
+              v{pluginVersion}
+            </span>
+          )}
         </div>
         <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>
           Baixe e instale o plugin <strong>Email Extractor Bridge</strong> no seu WordPress para que

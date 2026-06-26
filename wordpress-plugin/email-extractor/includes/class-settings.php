@@ -30,10 +30,20 @@ class EmailExtractor_Settings {
             'type' => 'string',
             'sanitize_callback' => 'sanitize_text_field',
         ]);
+        register_setting('emailext_settings', 'emailext_backend_url', [
+            'type' => 'string',
+            'sanitize_callback' => 'esc_url_raw',
+        ]);
+        register_setting('emailext_settings', 'emailext_site_id', [
+            'type' => 'integer',
+            'sanitize_callback' => 'absint',
+        ]);
     }
 
     public function render_page() {
         $token = get_option('emailext_auth_token', '');
+        $backend_url = get_option('emailext_backend_url', '');
+        $site_id = get_option('emailext_site_id', '');
         $history = $this->get_received_posts_history();
         $endpoint = rest_url('email-extractor/v1/publish');
         ?>
@@ -57,6 +67,20 @@ class EmailExtractor_Settings {
                                 <td>
                                     <input type="text" id="emailext_auth_token" name="emailext_auth_token" value="<?php echo esc_attr($token); ?>" class="regular-text" style="font-family: monospace; font-size: 12px;" />
                                     <p class="description">Use este token no header: <code>Authorization: Bearer &lt;token&gt;</code></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="emailext_backend_url">URL do Backend</label></th>
+                                <td>
+                                    <input type="url" id="emailext_backend_url" name="emailext_backend_url" value="<?php echo esc_attr($backend_url); ?>" class="regular-text" placeholder="https://seu-dominio.com" />
+                                    <p class="description">URL base do sistema Email Extractor (para aprovação manual enviar confirmação)</p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="emailext_site_id">ID do Site</label></th>
+                                <td>
+                                    <input type="number" id="emailext_site_id" name="emailext_site_id" value="<?php echo esc_attr($site_id); ?>" class="small-text" />
+                                    <p class="description">ID do site no painel Email Extractor (para identificar as aprovações)</p>
                                 </td>
                             </tr>
                         </table>

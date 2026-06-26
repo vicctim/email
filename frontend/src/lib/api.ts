@@ -109,6 +109,13 @@ export const settingsApi = {
 // ── Plugin ────────────────────────────────
 export const pluginApi = {
   /**
+   * Retorna informações do plugin (versão, etc.)
+   */
+  info: async () => {
+    const { data } = await api.get("/api/plugin/info");
+    return data;
+  },
+  /**
    * Triggers a browser download of the WordPress plugin .zip.
    * Uses a hidden <a> tag so the Authorization header is carried via the
    * existing cookie interceptor — we fetch with axios and create a blob URL.

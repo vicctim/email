@@ -1,4 +1,5 @@
 import asyncio
+import secrets
 from datetime import datetime, timezone
 from typing import Any
 
@@ -76,6 +77,12 @@ class WordPressPublisher:
 
         queue_item.parsed_content_html = self._content_for_publish(queue_item)
         self._validate_wordpress_url(site.base_url)
+
+        # Se a regra (ou o site, como fallback) exige aprovação manual, força draft e gera token
+        if rule.approval_required or site.approval_required:
+            queue_item.needs_approval = True
+            queue_item.approval_token = secrets.token_hex(32)
+
         plugin_token = self._plugin_token(site)
         if plugin_token:
             return await self._publish_with_plugin(queue_item, plugin_token)
@@ -92,16 +99,23 @@ class WordPressPublisher:
 
         author_username = (rule.author_username or "").strip()
         author_id = await self._resolve_author_id(site, author_username) if author_username else None
+        post_status = "draft" if queue_item.needs_approval else (rule.post_status or site.default_status or "publish")
         payload = {
             "title": queue_item.parsed_title,
             "content": queue_item.parsed_content_html,
             "excerpt": queue_item.parsed_excerpt or "",
-            "status": rule.post_status or site.default_status or "publish",
+            "status": post_status,
             "categories": rule.category_ids or site.default_category_ids or [],
             "tags": rule.tag_ids or site.default_tag_ids or [],
             "featured_image_url": queue_item.featured_image_url or "",
             "gallery_images": queue_item.gallery_image_urls or [],
         }
+        if queue_item.needs_approval and queue_item.approval_token:
+            payload["approval_token"] = queue_item.approval_token
+            # Informa ao plugin a URL do backend para callback de aprovação
+            _backend_base = get_settings().app_base_url
+            if _backend_base:
+                payload["_backend_url"] = _backend_base
         if author_username:
             payload["author_username"] = author_username
         if author_id:
@@ -159,11 +173,12 @@ class WordPressPublisher:
 
         author_username = (rule.author_username or "").strip()
         author_id = await self._resolve_author_id(site, author_username) if author_username else None
+        post_status = "draft" if queue_item.needs_approval else (rule.post_status or site.default_status or "publish")
         payload: dict[str, Any] = {
             "title": queue_item.parsed_title,
             "content": content,
             "excerpt": queue_item.parsed_excerpt or "",
-            "status": rule.post_status or site.default_status or "publish",
+            "status": post_status,
             "categories": rule.category_ids or site.default_category_ids or [],
             "tags": rule.tag_ids or site.default_tag_ids or [],
         }
@@ -184,14 +199,24 @@ class WordPressPublisher:
         return {"post_id": post_id, "post_url": data.get("link"), "status": data.get("status", payload["status"])}
 
     async def _resolve_author_id(self, site: WordPressSite, author_username: str) -> int:
+        # Tenta primeiro via plugin endpoint (mais confiável)
+        try:
+            return await self._resolve_author_via_plugin(site, author_username)
+        except Exception:
+            pass
+
+        # Fallback: REST API do WordPress sem context=edit
         password = decrypt_secret(site.encrypted_app_password)
         users_url = site.base_url.rstrip("/") + "/wp-json/wp/v2/users"
         async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
             response = await client.get(
                 users_url,
-                params={"context": "edit", "per_page": 100, "search": author_username},
+                params={"per_page": 100, "search": author_username},
                 auth=(site.username, password),
             )
+            if response.status_code == 403:
+                # Sem permissão para listar usuários — tenta buscar por slug diretamente
+                return await self._resolve_author_by_slug(site, author_username, password)
             response.raise_for_status()
 
         users = response.json()
@@ -209,6 +234,64 @@ class WordPressPublisher:
             author_id = user.get("id")
             if isinstance(author_id, int):
                 return author_id
+
+        raise ValueError(f"Autor WordPress não encontrado: {author_username}")
+
+    async def _resolve_author_via_plugin(self, site: WordPressSite, author_username: str) -> int:
+        """Tenta resolver o autor usando o endpoint /authors do plugin."""
+        from app.services.settings_store import read_global_settings
+
+        plugin_token = self._plugin_token(site)
+        if not plugin_token:
+            raise ValueError("Plugin token não disponível")
+
+        url = site.base_url.rstrip("/") + "/wp-json/email-extractor/v1/authors"
+        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"Authorization": f"Bearer {plugin_token}"})
+            resp.raise_for_status()
+
+        data = resp.json()
+        raw_authors = data.get("authors") if isinstance(data, dict) else data
+        if not isinstance(raw_authors, list):
+            raise ValueError("Plugin retornou autores em formato inválido")
+
+        normalized = author_username.casefold()
+        for item in raw_authors:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("username") or "").casefold() == normalized:
+                try:
+                    return int(item["id"])
+                except (KeyError, TypeError, ValueError):
+                    raise ValueError(f"Autor {author_username} encontrado mas sem ID válido")
+
+        raise ValueError(f"Autor WordPress não encontrado via plugin: {author_username}")
+
+    async def _resolve_author_by_slug(self, site: WordPressSite, author_username: str, password: str) -> int:
+        """Fallback: busca autor por slug na REST API sem context=edit."""
+        users_url = site.base_url.rstrip("/") + "/wp-json/wp/v2/users"
+        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            response = await client.get(
+                users_url,
+                params={"per_page": 100},
+                auth=(site.username, password),
+            )
+            response.raise_for_status()
+
+        users = response.json()
+        if not isinstance(users, list):
+            raise ValueError("WordPress retornou lista de autores inválida")
+
+        normalized = author_username.casefold()
+        for user in users:
+            if not isinstance(user, dict):
+                continue
+            username = str(user.get("username") or "").casefold()
+            slug = str(user.get("slug") or "").casefold()
+            if username == normalized or slug == normalized:
+                author_id = user.get("id")
+                if isinstance(author_id, int):
+                    return author_id
 
         raise ValueError(f"Autor WordPress não encontrado: {author_username}")
 

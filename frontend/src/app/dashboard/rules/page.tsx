@@ -21,6 +21,7 @@ interface Rule {
   wordpress_site_id: number;
   email_account?: { name: string };
   wordpress_site?: { name: string };
+  approval_required: boolean;
 }
 
 interface SelectOption { id: number; name: string }
@@ -42,6 +43,7 @@ interface RuleForm extends Record<string, unknown> {
   remove_footer: boolean;
   convert_bold_to_h3: boolean;
   extract_gallery: boolean;
+  approval_required: boolean;
 }
 
 export default function RulesPage() {
@@ -76,6 +78,7 @@ export default function RulesPage() {
     remove_footer: true,
     convert_bold_to_h3: true,
     extract_gallery: true,
+    approval_required: false,
   });
 
   useEffect(() => { loadData(); }, []);
@@ -103,6 +106,7 @@ export default function RulesPage() {
       sender_contains: "", sender_name_contains: "", subject_regex: "",
       delay_minutes: 10, post_status: "publish", category_ids: [], author_username: "",
       remove_signature: true, remove_footer: true, convert_bold_to_h3: true, extract_gallery: true,
+      approval_required: false,
     });
     if (siteId) void loadSiteOptions(siteId);
     setModalOpen(true);
@@ -124,6 +128,7 @@ export default function RulesPage() {
       category_ids: Array.isArray(rule.category_ids) ? rule.category_ids : [],
       author_username: rule.author_username || "",
       remove_signature: true, remove_footer: true, convert_bold_to_h3: true, extract_gallery: true,
+      approval_required: ("approval_required" in rule) ? (rule as Rule).approval_required : false,
     });
     if (rule.wordpress_site_id) void loadSiteOptions(rule.wordpress_site_id);
     setModalOpen(true);
@@ -253,6 +258,7 @@ export default function RulesPage() {
                 <th>Assunto</th>
                 <th>Site Destino</th>
                 <th>Delay</th>
+                <th>Aprovação</th>
                 <th style={{ width: 130 }}>Ações</th>
               </tr>
             </thead>
@@ -288,6 +294,13 @@ export default function RulesPage() {
                     </span>
                   </td>
                   <td style={{ fontSize: 13, color: "var(--text-muted)" }}>{rule.delay_minutes} min</td>
+                  <td>
+                    {rule.approval_required ? (
+                      <span className="badge badge-warning">Manual</span>
+                    ) : (
+                      <span className="badge badge-neutral" style={{ opacity: 0.6 }}>Automática</span>
+                    )}
+                  </td>
                   <td>
                     <div style={{ display: "flex", gap: 4 }}>
                       <button
@@ -494,6 +507,22 @@ export default function RulesPage() {
               <option value="pending">Pendente</option>
             </select>
           </div>
+        </div>
+
+        <div className="form-group" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, padding: "12px 16px", background: "var(--bg-tertiary)", borderRadius: "var(--radius-md)" }}>
+          <input
+            type="checkbox"
+            id="approval_required"
+            checked={form.approval_required}
+            onChange={(e) => setForm({ ...form, approval_required: e.target.checked })}
+            style={{ width: 18, height: 18, accentColor: "var(--brand-500)" }}
+          />
+          <label htmlFor="approval_required" style={{ fontSize: 14, fontWeight: 500, cursor: "pointer", margin: 0 }}>
+            Exige aprovação manual
+          </label>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            — Post vai como rascunho e precisa ser aprovado pelo cliente via WhatsApp
+          </span>
         </div>
 
         <div className="form-actions">

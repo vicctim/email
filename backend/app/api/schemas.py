@@ -125,6 +125,7 @@ class MatchRuleBase(BaseModel):
     extract_gallery: bool = True
     custom_cut_regex: str | None = None
     custom_cut_selector: str | None = None
+    approval_required: bool = False
 
 
 class MatchRuleCreate(MatchRuleBase):
@@ -150,6 +151,7 @@ class MatchRuleUpdate(BaseModel):
     extract_gallery: bool | None = None
     custom_cut_regex: str | None = None
     custom_cut_selector: str | None = None
+    approval_required: bool | None = None
 
 
 class MatchRuleRead(MatchRuleBase):
@@ -185,6 +187,9 @@ class PublishQueueRead(BaseModel):
     attempts: int
     max_attempts: int
     last_error: str | None = None
+    needs_approval: bool = False
+    approval_token: str | None = None
+    approved_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -224,6 +229,13 @@ class PublishLogRead(BaseModel):
     updated_at: datetime
 
 
+class ApprovalRequest(BaseModel):
+    """Recebido do plugin WordPress quando o post é aprovado manualmente."""
+    post_id: int
+    site_id: int
+    approval_token: str
+
+
 class DashboardStats(BaseModel):
     published_today: int
     pending: int
@@ -233,6 +245,7 @@ class DashboardStats(BaseModel):
     total_published: int
     active_sites: int
     active_rules: int
+    weekly_chart: list[dict[str, object]] = Field(default_factory=list)
 
 
 class GlobalSettings(BaseModel):

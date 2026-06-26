@@ -34,6 +34,26 @@ class WhatsAppNotifier:
     async def send_success(self, *, title: str, site: str, url: str | None) -> bool:
         return await self.send_message(f"✅ Post publicado: {title} → {site} — {url or ''}".strip())
 
+    @staticmethod
+    def _append_query_param(url: str, param: str, value: str) -> str:
+        """Adiciona query param a uma URL, detectando se já existe ? na URL."""
+        separator = "&" if "?" in url else "?"
+        return f"{url}{separator}{param}={value}"
+
+    async def send_approval_pending(self, *, title: str, site: str, url: str | None, token: str) -> bool:
+        """Notifica que um post foi criado como rascunho e aguarda aprovação manual."""
+        approval_url = self._append_query_param(url, "emailext_approve", token) if url else ""
+        return await self.send_message(
+            f"📝 Post aguardando aprovação: {title} → {site}\n"
+            f"{approval_url}\n"
+            "Clique no link acima para visualizar e aprovar o post."
+        )
+
+    async def send_approved(self, *, title: str, url: str | None) -> bool:
+        """Notifica que um post foi aprovado e publicado."""
+        msg = f"✅ Post aprovado e publicado: {title} — {url or ''}".strip()
+        return await self.send_message(msg)
+
     async def send_error(self, *, title: str, error: str) -> bool:
         return await self.send_message(f"❌ Falha ao publicar: {title} — {error}")
 

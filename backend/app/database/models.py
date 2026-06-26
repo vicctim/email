@@ -73,6 +73,7 @@ class WordPressSite(TimestampMixin, Base):
     default_category_ids: Mapped[list[int]] = mapped_column(JSONB, nullable=False, default=list)
     default_tag_ids: Mapped[list[int]] = mapped_column(JSONB, nullable=False, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    approval_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_status: Mapped[str | None] = mapped_column(String(80))
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -107,6 +108,7 @@ class MatchRule(TimestampMixin, Base):
     extract_gallery: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     custom_cut_regex: Mapped[str | None] = mapped_column(String(500))
     custom_cut_selector: Mapped[str | None] = mapped_column(String(500))
+    approval_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     email_account: Mapped[EmailAccount] = relationship(back_populates="match_rules")
     wordpress_site: Mapped[WordPressSite] = relationship(back_populates="match_rules")
@@ -147,6 +149,9 @@ class PublishQueue(TimestampMixin, Base):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     last_error: Mapped[str | None] = mapped_column(Text)
+    needs_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    approval_token: Mapped[str | None] = mapped_column(String(128))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     extra_data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
     email_account: Mapped[EmailAccount] = relationship(back_populates="queue_items")

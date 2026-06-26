@@ -181,15 +181,28 @@ async def _publish_to_wordpress(queue_id: int) -> dict[str, object]:
                 await session.commit()
 
         if result.get("status") != "duplicate":
-            send_whatsapp_notification.apply_async(
-                kwargs={
-                    "kind": "success",
-                    "title": title,
-                    "site": site_name,
-                    "url": result.get("post_url"),
-                },
-                queue="notify",
-            )
+            needs_approval = queue_item and queue_item.needs_approval
+            if needs_approval:
+                send_whatsapp_notification.apply_async(
+                    kwargs={
+                        "kind": "approval_pending",
+                        "title": title,
+                        "site": site_name,
+                        "url": result.get("post_url"),
+                        "approval_token": queue_item.approval_token if queue_item else None,
+                    },
+                    queue="notify",
+                )
+            else:
+                send_whatsapp_notification.apply_async(
+                    kwargs={
+                        "kind": "success",
+                        "title": title,
+                        "site": site_name,
+                        "url": result.get("post_url"),
+                    },
+                    queue="notify",
+                )
         return {"queue_id": queue_id, **result}
     except Exception as exc:
         logger.exception("Falha ao publicar item %s", queue_id)
@@ -225,9 +238,12 @@ def send_whatsapp_notification(
     site: str | None = None,
     url: str | None = None,
     error: str | None = None,
+    approval_token: str | None = None,
 ) -> bool:
     return _run(
-        _send_whatsapp_notification(kind=kind, title=title, site=site, url=url, error=error)
+        _send_whatsapp_notification(
+            kind=kind, title=title, site=site, url=url, error=error, approval_token=approval_token
+        )
     )
 
 
@@ -238,10 +254,17 @@ async def _send_whatsapp_notification(
     site: str | None,
     url: str | None,
     error: str | None,
+    approval_token: str | None = None,
 ) -> bool:
     notifier = WhatsAppNotifier()
     if kind == "success":
         return await notifier.send_success(title=title, site=site or "", url=url)
+    if kind == "approval_pending":
+        return await notifier.send_approval_pending(
+            title=title, site=site or "", url=url, token=approval_token or ""
+        )
+    if kind == "approved":
+        return await notifier.send_approved(title=title, url=url)
     return await notifier.send_error(title=title, error=error or "Erro desconhecido")
 
 

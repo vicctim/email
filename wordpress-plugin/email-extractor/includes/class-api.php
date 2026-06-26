@@ -200,6 +200,22 @@ class EmailExtractor_API {
         update_post_meta($post_id, '_emailext_source', 'email-extractor');
         update_post_meta($post_id, '_emailext_gallery_ids', $gallery_ids);
 
+        // Salva token de aprovação se enviado (aprovação manual)
+        $approval_token = sanitize_text_field($params['approval_token'] ?? '');
+        if (!empty($approval_token)) {
+            update_post_meta($post_id, '_emailext_approval_token', $approval_token);
+        }
+
+        // Salva URL do backend e ID do site
+        $backend_url_param = sanitize_text_field($params['_backend_url'] ?? '');
+        if (!empty($backend_url_param)) {
+            update_option('emailext_backend_url', esc_url_raw($backend_url_param));
+        }
+        $site_id_param = absint($params['_site_id'] ?? 0);
+        if ($site_id_param) {
+            update_option('emailext_site_id', $site_id_param);
+        }
+
         // Track last received
         $history = get_option('emailext_received_posts', []);
         array_unshift($history, [

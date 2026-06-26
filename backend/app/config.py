@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     image_max_width: int = Field(default=1920, ge=1)
     image_convert_to_webp: bool = False
     image_webp_quality: int = Field(default=82, ge=1, le=100)
+    app_base_url: str | None = Field(default=None, description="URL pública do backend para callbacks de aprovação")
 
     @field_validator("cors_origins", mode="before")
     @classmethod

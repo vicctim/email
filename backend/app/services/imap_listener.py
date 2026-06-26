@@ -200,24 +200,38 @@ class ImapListener:
         processed = 0
         fetched = client.fetch(uids, ["BODY.PEEK[]"])
         for uid, payload in fetched.items():
-            raw_email = self._raw_email_from_payload(payload)
-            if not raw_email:
-                continue
+            try:
+                raw_email = self._raw_email_from_payload(payload)
+                if not raw_email:
+                    continue
 
-            headers = self._headers(raw_email)
-            rule = self._matching_rule(account.rules, headers["from"], headers["subject"])
-            if not rule:
-                continue
+                headers = self._headers(raw_email)
+                rule = self._matching_rule(account.rules, headers["from"], headers["subject"])
+                if not rule:
+                    continue
 
-            self._enqueue_email(
-                account_id=account.id,
-                rule_id=rule.id,
-                email_uid=str(uid),
-                raw_email=raw_email,
-            )
-            client.add_flags([uid], ["\\Seen"])
-            self._apply_processed_label(client, uid)
-            processed += 1
+                self._enqueue_email(
+                    account_id=account.id,
+                    rule_id=rule.id,
+                    email_uid=str(uid),
+                    raw_email=raw_email,
+                )
+                processed += 1
+
+                # Marca como lido e aplica label apenas quando enfileirado com sucesso,
+                # para que emails fora dos filtros nao sejam alterados.
+                client.add_flags([uid], ["\\Seen"])
+                self._apply_processed_label(client, uid)
+            except Exception:
+                # Loga o erro mas nao altera o email na caixa —
+                # assim emails problematicos nao sao marcados como lidos
+                # e podem ser reavaliados na proxima execucao.
+                logger.debug(
+                    "Erro ao processar UID %s da conta %s",
+                    uid,
+                    account.id,
+                    exc_info=True,
+                )
         return processed
 
     @staticmethod
